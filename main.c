@@ -30,8 +30,9 @@ void print_help(char * exe_name) {
     puts("Options:");
     puts("  -l, --lowerdir=LOWERDIR    the lowerdir of OverlayFS (required)");
     puts("  -u, --upperdir=UPPERDIR    the upperdir of OverlayFS (required)");
-    puts("  -v, --verbose              with diff action only: when a directory only exists in one version, still list every file of the directory");
     puts("  -q, --quiet                don't decorate output.");
+    puts("  -s, --script=OUTPUTSCRIPT  path of outputscript.");
+    puts("  -v, --verbose              with diff action only: when a directory only exists in one version, still list every file of the directory");
     puts("  -h, --help                 show this help text");
     puts("");
     puts("See https://github.com/kmxz/overlayfs-tools/ for warnings and more information.");
@@ -115,13 +116,15 @@ int main(int argc, char *argv[]) {
     char upper[PATH_MAX] = "";
     bool verbose = false;
     bool quiet = false;
+    char* script_template = NULL;
 
     static struct option long_options[] = {
         { "lowerdir", required_argument, 0, 'l' },
         { "upperdir", required_argument, 0, 'u' },
         { "help",     no_argument      , 0, 'h' },
-        { "verbose",  no_argument      , 0, 'v' },
         { "quiet",    no_argument      , 0, 'q' },
+        { "script",   required_argument, 0, 's' },
+        { "verbose",  no_argument      , 0, 'v' },
         { 0,          0,                 0,  0  }
     };
 
@@ -140,6 +143,9 @@ int main(int argc, char *argv[]) {
                 return EXIT_SUCCESS;
             case 'q':
                 quiet = true;
+                break;
+            case 's':
+                script_template = optarg;
                 break;
             case 'v':
                 verbose = true;
@@ -176,7 +182,14 @@ int main(int argc, char *argv[]) {
 
     if (optind == argc - 1) {
         int out;
-        char filename_template[] = "overlay-tools-XXXXXX.sh";
+        char *filename_template;
+        char file_name_template_default[] = "overlay-tools-XXXXXX.sh";
+        if (script_template)
+        {
+            filename_template = script_template;
+        } else {
+            filename_template = &file_name_template_default[0];
+        }
         FILE *script = NULL;
         if (strcmp(argv[optind], "diff") == 0) {
             out = diff(lower, upper, verbose);
