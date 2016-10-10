@@ -1,0 +1,4 @@
+.*
+*.o
+overlay
+overlay-tools-*.sh
