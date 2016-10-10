@@ -48,7 +48,7 @@ bool is_mounted(const char *lower, const char *upper) {
     }
     char buf[STRING_BUFFER_SIZE];
     while (fgets(buf, STRING_BUFFER_SIZE, f)) {
-        if (!starts_with(buf, "overlay")) {
+        if (!strstr(buf, " overlay ") && !strstr(buf, " overlayfs ")) {
             continue;
         }
         if (strlen(buf) == STRING_BUFFER_SIZE) {
