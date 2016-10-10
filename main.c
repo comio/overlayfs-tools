@@ -31,6 +31,7 @@ void print_help(char * exe_name) {
     puts("  -l, --lowerdir=LOWERDIR    the lowerdir of OverlayFS (required)");
     puts("  -u, --upperdir=UPPERDIR    the upperdir of OverlayFS (required)");
     puts("  -v, --verbose              with diff action only: when a directory only exists in one version, still list every file of the directory");
+    puts("  -q, --quiet                don't decorate output.");
     puts("  -h, --help                 show this help text");
     puts("");
     puts("See https://github.com/kmxz/overlayfs-tools/ for warnings and more information.");
@@ -113,12 +114,14 @@ int main(int argc, char *argv[]) {
     char lower[PATH_MAX] = "";
     char upper[PATH_MAX] = "";
     bool verbose = false;
+    bool quiet = false;
 
     static struct option long_options[] = {
         { "lowerdir", required_argument, 0, 'l' },
         { "upperdir", required_argument, 0, 'u' },
         { "help",     no_argument      , 0, 'h' },
         { "verbose",  no_argument      , 0, 'v' },
+        { "quiet",    no_argument      , 0, 'q' },
         { 0,          0,                 0,  0  }
     };
 
@@ -135,6 +138,9 @@ int main(int argc, char *argv[]) {
             case 'h':
                 print_help(argv[0]);
                 return EXIT_SUCCESS;
+            case 'q':
+                quiet = true;
+                break;
             case 'v':
                 verbose = true;
                 break;
@@ -187,7 +193,12 @@ int main(int argc, char *argv[]) {
             goto see_help;
         }
         if (script != NULL) {
-            printf("The script %s is created. Run the script to do the actual work please. Remember to run it when the OverlayFS is not mounted.\n", filename_template);
+            if (quiet)
+            {
+                printf("%s", filename_template);
+            } else {
+                printf("The script %s is created. Run the script to do the actual work please. Remember to run it when the OverlayFS is not mounted.\n", filename_template);
+            }
             fclose(script);
         }
         if (out) {
