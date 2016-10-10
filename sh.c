@@ -2,12 +2,19 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <time.h>
 #include "sh.h"
 
-FILE* create_shell_script(char *tmp_path_buffer) {
-    int tmp_file = mkstemps(tmp_path_buffer, 3); // the 3 is for suffix length (".sh")
+FILE* create_shell_script(char *tmp_path_buffer, bool generate) {
+    int tmp_file;
+    if (generate) {
+        tmp_file = open(tmp_path_buffer, O_CREAT | O_WRONLY);
+    } else {
+        tmp_file = mkstemps(tmp_path_buffer, 3); // the 3 is for suffix length (".sh")
+    }
     if (tmp_file < 0) { return NULL; }
     fchmod(tmp_file, S_IRWXU); // chmod to 0700
     FILE* f = fdopen(tmp_file, "w");

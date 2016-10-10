@@ -194,11 +194,11 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[optind], "diff") == 0) {
             out = diff(lower, upper, verbose);
         } else if (strcmp(argv[optind], "vacuum") == 0) {
-            script = create_shell_script(filename_template);
+            script = create_shell_script(filename_template, script_template != NULL);
             if (script == NULL) { fprintf(stderr, "Script file cannot be created.\n"); return EXIT_FAILURE; }
             out = vacuum(lower, upper, verbose, script);
         } else if (strcmp(argv[optind], "merge") == 0) {
-            script = create_shell_script(filename_template);
+            script = create_shell_script(filename_template, script_template != NULL);
             if (script == NULL) { fprintf(stderr, "Script file cannot be created.\n"); return EXIT_FAILURE; }
             out = merge(lower, upper, verbose, script);
         } else {
