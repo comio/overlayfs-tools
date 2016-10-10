@@ -28,6 +28,7 @@ void print_help(char * exe_name) {
     puts("  merge  - merge all changes from upperdir to lowerdir, and clear upperdir");
     puts("");
     puts("Options:");
+    puts("  -f, --force                force any action");
     puts("  -l, --lowerdir=LOWERDIR    the lowerdir of OverlayFS (required)");
     puts("  -u, --upperdir=UPPERDIR    the upperdir of OverlayFS (required)");
     puts("  -q, --quiet                don't decorate output.");
@@ -73,8 +74,8 @@ bool is_mounted(const char *lower, const char *upper) {
     return false;
 }
 
-bool check_mounted(const char *lower, const char *upper) {
-    if (is_mounted(lower, upper)) {
+bool check_mounted(const char *lower, const char *upper, bool forced) {
+    if (!forced && is_mounted(lower, upper)) {
         printf("It is strongly recommended to unmount OverlayFS first. Still continue (not recommended)?: \n");
         int r = getchar();
         if (r != 'Y' && r != 'y') {
@@ -114,11 +115,13 @@ int main(int argc, char *argv[]) {
 
     char lower[PATH_MAX] = "";
     char upper[PATH_MAX] = "";
+    bool force=false;
     bool verbose = false;
     bool quiet = false;
     char* script_template = NULL;
 
     static struct option long_options[] = {
+        { "force",    no_argument      , 0, 'f' },
         { "lowerdir", required_argument, 0, 'l' },
         { "upperdir", required_argument, 0, 'u' },
         { "help",     no_argument      , 0, 'h' },
@@ -132,6 +135,9 @@ int main(int argc, char *argv[]) {
     int long_index = 0;
     while ((opt = getopt_long_only(argc, argv, "", long_options, &long_index)) != -1) {
         switch (opt) {
+            case 'f':
+                force=true;
+                break;
             case 'l':
                 if (realpath(optarg, lower) == NULL) { lower[0] = '\0'; }
                 break;
@@ -176,7 +182,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "The program cannot write trusted.* xattr. Try run again as root.\n");
         return EXIT_FAILURE;
     }
-    if (check_mounted(lower, upper)) {
+    if (check_mounted(lower, upper, force)) {
         return EXIT_FAILURE;
     }
 
