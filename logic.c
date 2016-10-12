@@ -334,7 +334,7 @@ int merge_whiteout(const char *lower_path, const char* upper_path, const size_t 
 
 typedef int (*TRAVERSE_CALLBACK)(const char *lower_path, const char* upper_path, const size_t lower_root_len, const struct stat *lower_status, const struct stat *upper_status, bool verbose, FILE* script_stream, int *fts_instr);
 
-int traverse(const char *lower_root, const char *upper_root, bool verbose, FILE* script_stream, TRAVERSE_CALLBACK callback_d, TRAVERSE_CALLBACK callback_dp, TRAVERSE_CALLBACK callback_f, TRAVERSE_CALLBACK callback_sl, TRAVERSE_CALLBACK callback_whiteout) { // returns 0 on success
+int traverse(const char *lower_root, const char *upper_root, bool verbose, FILE* script_stream, TRAVERSE_CALLBACK callback_d, TRAVERSE_CALLBACK callback_dp, TRAVERSE_CALLBACK callback_f, TRAVERSE_CALLBACK callback_sl, TRAVERSE_CALLBACK callback_dflt, TRAVERSE_CALLBACK callback_whiteout) { // returns 0 on success
     FTSENT *cur;
     char *paths[2] = {(char *) upper_root, NULL };
     char lower_path[PATH_MAX];
@@ -363,8 +363,7 @@ int traverse(const char *lower_root, const char *upper_root, bool verbose, FILE*
                 if (is_whiteout(cur->fts_statp)) {
                     callback = callback_whiteout;
                 } else {
-                    return_val = -1;
-                    fprintf(stderr, "File %s is a special file (device or pipe). We cannot handle that.\n", cur->fts_path);
+                    callback = callback_dflt;
                 }
                 break;
             default:
@@ -396,13 +395,13 @@ int traverse(const char *lower_root, const char *upper_root, bool verbose, FILE*
 }
 
 int vacuum(const char* lowerdir, const char* upperdir, bool is_verbose, FILE* script_stream) {
-    return traverse(lowerdir, upperdir, is_verbose, script_stream, vacuum_d, vacuum_dp, vacuum_f, vacuum_sl, NULL);
+    return traverse(lowerdir, upperdir, is_verbose, script_stream, vacuum_d, vacuum_dp, vacuum_f, vacuum_sl, vacuum_f, NULL);
 }
 
 int diff(const char* lowerdir, const char* upperdir, bool is_verbose) {
-    return traverse(lowerdir, upperdir, is_verbose, NULL, diff_d, NULL, diff_f, diff_sl, diff_whiteout);
+    return traverse(lowerdir, upperdir, is_verbose, NULL, diff_d, NULL, diff_f, diff_sl, diff_f, diff_whiteout);
 }
 
 int merge(const char* lowerdir, const char* upperdir, bool is_verbose, FILE* script_stream) {
-    return traverse(lowerdir, upperdir, is_verbose, script_stream, merge_d, merge_dp, merge_f_sl, merge_f_sl, merge_whiteout);
+    return traverse(lowerdir, upperdir, is_verbose, script_stream, merge_d, merge_dp, merge_f_sl, merge_f_sl, merge_f_sl, merge_whiteout);
 }
