@@ -1,0 +1,321 @@
+#!/bin/sh
+
+OVERLAYSYNC_BASENAME=${0##*/}
+OVERLAYSYNC_CONF_DIR="/etc/${OVERLAYSYNC_BASENAME}"
+OVERLAYSYNC_CONF="${OVERLAYSYNC_CONF_DIR}/${OVERLAYSYNC_BASENAME}.conf"
+OVERLAYSYNC_RUN_DIR="/var/run/${OVERLAYSYNC_BASENAME}"
+
+ERROR_MOUNTPOINT_NOTDEFINED=1
+ERROR_MOUNTPOINT_NOTVALID=2
+ERROR_MOUNTPOINT_ALREADY_MOUNTED=3
+ERROR_MOUNTPOINT_NOT_MOUNTED=4
+
+[ -f "${OVERLAYSYNC_CONF}" ] && . "${OVERLAYSYNC_CONF}"
+
+emsg()
+{
+	echo "$@" >&2
+}
+
+do_help()
+{
+	echo "$0"
+}
+
+do_not_implemented()
+{
+	echo "Not implemented $1"
+}
+
+load_config()
+{
+	local mount_point="$1"
+	local mount_point_esc=$(systemd-escape -p "${mount_point}")
+
+	[ -e "${OVERLAYSYNC_CONF_DIR}/${mount_point_esc}.conf" ] && . "${OVERLAYSYNC_CONF_DIR}/${mount_point_esc}.conf"
+
+	if [ -z "${UPPERDIR}" -o -z "${WORKDIR}" ]; then
+		UPPERTYPE=tmpfs
+		UPPERDIR="${manage_dir}/upper"
+		WORKDIR="${manage_dir}/work"
+	fi
+
+	[ -z "${LOWERDIR}" ] && LOWERDIR="${mount_point}"
+
+	[ -z "${SYNC}" ] && SYNC=1
+	case "${SYNC}" in
+		yes|y|enable|1)
+			SYNC=yes
+			;;
+		*)
+			SYNC=no
+			;;
+	esac
+
+	[ -z "${PRESERVE_OWNER}" ] && PRESERVE_OWNER=1
+	case "${PRESERVE_OWNER}" in
+		yes|y|enable|1)
+			PRESERVE_OWNER=yes
+			;;
+		*)
+			PRESERVE_OWNER=no
+			;;
+	esac
+
+	[ -z "${PRESERVE_PERM}" ] && PRESERVE_PERM=1
+	case "${PRESERVE_PERM}" in
+		yes|y|enable|1)
+			PRESERVE_PERM=yes
+			;;
+		*)
+			PRESERVE_PERM=no
+			;;
+	esac
+}
+
+parse_conf()
+{
+	:
+}
+
+do_mount()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+	local mount_opts=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defied"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+	manage_dir="${OVERLAYSYNC_RUN_DIR}/${mount_point_esc}"
+
+	if [ -d "${manage_dir}/.mounted" ]; then
+		emsg "Mount point ${mount_point} already mounted"
+		return $ERROR_MOUNTPOINT_ALREADY_MOUNTED
+	fi
+
+	load_config "${mount_point}"
+
+	mkdir -p "${manage_dir}"
+	case "$UPPERTYPE" in
+		tmpfs)
+			mount -t tmpfs overlay-sync-upper "${manage_dir}"
+			;;
+	esac
+
+	mkdir -p "${manage_dir}/.mounted"
+	mkdir -p "${UPPERDIR}"
+	mkdir -p "${LOWERDIR}"
+	mkdir -p "${WORKDIR}"
+
+
+	if [ "${PRESERVE_OWNER}" ]; then
+		chown --reference="${LOWERDIR}" "${UPPERDIR}"
+		chown --reference="${LOWERDIR}" "${WORKDIR}"
+	elif [ -n "${OWNER}" ]; then
+		chown "${OWNER}" "${UPPERDIR}"
+		chown "${OWNER}" "${WORKDIR}"
+	fi
+
+
+	if [ "${PRESERVE_PERM}" ]; then
+		chmod --reference="${LOWERDIR}" "${UPPERDIR}"
+		chmod --reference="${LOWERDIR}" "${WORKDIR}"
+	elif [ -n "${PERM}" ]; then
+		chmod "${PERM}" "${UPPERDIR}"
+		chmod "${PERM}" "${WORKDIR}"
+	fi
+
+	mount_opts="lowerdir=${LOWERDIR},upperdir=${UPPERDIR},workdir=${WORKDIR}"
+
+	[ -n "${EXTRA_OPTS}" ] && mount_opts="${mount_opts},${EXTRA_OPTS}"
+
+	mount -t overlay overlay-sync -o "${mount_opts}" "${mount_point}"
+
+	return 0
+}
+
+do_sync()
+{
+	local lowerdir="$1"
+	local upperdir="$2"
+	local scriptfile="$(mktemp)"
+
+	overlay --quiet --lowerdir="${lowerdir}" --upperdir="${upperdir}" --script="${scriptfile}" --force merge > /dev/null
+	[ -f "${scriptfile}" ] && . "${scriptfile}"
+	rm -rf "${scriptfile}"
+}
+
+do_umount()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defined"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+	manage_dir="${OVERLAYSYNC_RUN_DIR}/${mount_point_esc}"
+
+	if [ ! -d "${manage_dir}/.mounted" ]; then
+		emsg "Mount point ${mount_point} not mounted"
+		return $ERROR_MOUNTPOINT_NOT_MOUNTED
+	fi
+
+	load_config "${mount_point}"
+
+	umount "${mount_point}"
+
+	rm -rf "${manage_dir}/.mounted"
+
+	[ "${SYNC}" == "yes" ] && do_sync "${LOWERDIR}" "${UPPERDIR}"
+
+	case "${UPPERTYPE}" in
+		tmpfs)
+			umount "${manage_dir}"
+			;;
+	esac
+}
+
+do_enable()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defined"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+
+	systemctl enable overlay-sync@${mount_point_esc}.service
+}
+
+do_disable()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defined"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+
+	systemctl disable overlay-sync@${mount_point_esc}.service
+}
+
+do_start()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defined"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+
+	systemctl start overlay-sync@${mount_point_esc}.service
+}
+
+do_stop()
+{
+	local mount_point="$1"
+	local mount_point_esc=
+	local manage_dir=
+
+	if [ -z "${mount_point}" ]; then
+		emsg "Mount point not defined"
+		return $ERROR_MOUNTPOINT_NOTDEFINED
+	fi
+
+	if [ ! -d "${mount_point}" ]; then
+		emsg "Mount point ${mount_point} must be a directory"
+		return $ERROR_MOUNTPOINT_NOTVALID
+	fi
+
+	mount_point="$(readlink -f "${mount_point}")"
+	mount_point_esc=$(systemd-escape -p "${mount_point}")
+
+	systemctl stop overlay-sync@${mount_point_esc}.service
+}
+
+action="$1"
+[ -z "$action" ] && action=help
+
+case $action in
+	help)
+		do_help
+		;;
+	mount)
+		shift
+		do_mount "$@"
+		;;
+	umount)
+		shift
+		do_umount "$@"
+		;;
+	enable)
+		shift
+		do_enable "$@"
+		;;
+	disable)
+		shift
+		do_disable "$@"
+		;;
+	start)
+		shift
+		do_start "$@"
+		;;
+	stop)
+		shift
+		do_stop "$@"
+		;;
+	*)
+		do_not_implemented "$action"
+		;;
+esac

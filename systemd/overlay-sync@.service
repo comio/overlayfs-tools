@@ -1,0 +1,16 @@
+[Unit]
+Description=Sync overlay mount %f
+Requires=local-fs.target basic.target
+After=local-fs.target
+Before=basic.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/overlay-sync mount "%f"
+ExecStop=/usr/local/bin/overlay-sync umount "%f"
+TimeoutSec=infinity
+
+[Install]
+WantedBy=basic.target
